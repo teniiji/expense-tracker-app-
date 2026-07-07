@@ -10,6 +10,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { Expense } from "@/lib/types";
+import { formatAmount } from "@/lib/format";
 
 interface TrendChartProps {
   expenses: Expense[];
@@ -39,7 +40,7 @@ export default function TrendChart({ expenses }: TrendChartProps) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" />
             <YAxis />
-            <Tooltip formatter={(value: number) => value.toFixed(2)} />
+            <Tooltip formatter={(value: number) => formatAmount(value)} />
             <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
