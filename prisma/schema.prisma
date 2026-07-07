@@ -14,4 +14,7 @@ model Expense {
   description String?
   date        DateTime
   createdAt   DateTime @default(now())
+
+  @@index([date])
+  @@index([category])
 }
