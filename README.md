@@ -21,6 +21,19 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 The SQLite database file is created at `prisma/dev.db` on first migration.
 
+## Using it from your phone
+
+The dev/start scripts bind to `0.0.0.0`, so the app is also reachable from other devices on the same Wi-Fi network as your computer — not just `localhost`.
+
+1. Find your computer's local IP address:
+   - **Windows**: open Command Prompt and run `ipconfig`, look for "IPv4 Address" (e.g. `192.168.1.42`)
+   - **macOS**: System Settings → Wi-Fi → Details, or run `ipconfig getifaddr en0` in Terminal
+2. Make sure your phone is connected to the **same Wi-Fi network** as your computer.
+3. Start the server (`npm run dev`) and, on your phone's browser, go to `http://<your-ip>:3000` (e.g. `http://192.168.1.42:3000`).
+4. If it doesn't load, your computer's firewall may be blocking the connection — on Windows, allow Node.js through **Windows Defender Firewall** for private networks when prompted (or add a rule for port 3000).
+
+This only works while your computer is on and the dev server is running, and only from devices on the same local network. To access the app from anywhere (not just your home Wi-Fi), you'd need to deploy it to a hosting provider (e.g. Vercel) instead.
+
 ## Scripts
 
 - `npm run dev` — start the dev server
