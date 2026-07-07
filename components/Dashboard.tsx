@@ -2,17 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Expense } from "@/lib/types";
+import { formatAmount } from "@/lib/format";
 import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseFilters, { Filters } from "@/components/ExpenseFilters";
 import ExpenseList from "@/components/ExpenseList";
 import SummaryCards from "@/components/SummaryCards";
 import CategoryChart from "@/components/CategoryChart";
 import TrendChart from "@/components/TrendChart";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function Dashboard() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
   const [filters, setFilters] = useState<Filters>({
     category: "All",
     from: "",
@@ -61,8 +64,10 @@ export default function Dashboard() {
     await fetchExpenses();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this expense?")) return;
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
+    setPendingDelete(null);
     await fetch(`/api/expenses/${id}`, { method: "DELETE" });
     if (editingExpense?.id === id) setEditingExpense(null);
     await fetchExpenses();
@@ -96,9 +101,24 @@ export default function Dashboard() {
         <ExpenseList
           expenses={expenses}
           onEdit={setEditingExpense}
-          onDelete={handleDelete}
+          onDeleteRequest={setPendingDelete}
         />
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete expense?"
+        description={
+          pendingDelete
+            ? `${pendingDelete.category} · ${formatAmount(pendingDelete.amount)}${
+                pendingDelete.description ? ` · ${pendingDelete.description}` : ""
+              }`
+            : undefined
+        }
+        confirmLabel="Delete"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
