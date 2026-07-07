@@ -86,7 +86,7 @@ export default function ExpenseForm({
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-sm text-slate-600 mb-1">Amount</label>
           <input

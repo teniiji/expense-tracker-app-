@@ -71,7 +71,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold">Expense Tracker</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Expense Tracker</h1>
         <p className="text-slate-500">Keep tabs on where your money goes.</p>
       </header>
 
