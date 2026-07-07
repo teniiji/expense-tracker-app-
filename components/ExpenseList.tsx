@@ -32,8 +32,8 @@ export default function ExpenseList({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="bg-white rounded-lg shadow overflow-x-auto">
+      <table className="w-full text-sm min-w-[560px]">
         <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>
             <th className="px-4 py-2">Date</th>
@@ -56,16 +56,16 @@ export default function ExpenseList({
               <td className="px-4 py-2 text-right font-medium">
                 {formatAmount(expense.amount)}
               </td>
-              <td className="px-4 py-2 whitespace-nowrap text-right space-x-2">
+              <td className="px-4 py-2 whitespace-nowrap text-right space-x-3">
                 <button
                   onClick={() => onEdit(expense)}
-                  className="text-slate-600 hover:underline"
+                  className="text-slate-600 hover:underline py-1"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => onDelete(expense.id)}
-                  className="text-red-600 hover:underline"
+                  className="text-red-600 hover:underline py-1"
                 >
                   Delete
                 </button>
