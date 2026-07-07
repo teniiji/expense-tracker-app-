@@ -1,6 +1,7 @@
 "use client";
 
 import { Expense } from "@/lib/types";
+import { formatAmount } from "@/lib/format";
 
 interface ExpenseListProps {
   expenses: Expense[];
@@ -14,9 +15,6 @@ const formatDate = (iso: string) =>
     month: "short",
     day: "numeric",
   });
-
-const formatAmount = (amount: number) =>
-  amount.toLocaleString(undefined, { style: "currency", currency: "USD" });
 
 export default function ExpenseList({
   expenses,

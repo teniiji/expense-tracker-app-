@@ -1,11 +1,9 @@
 import { Expense } from "@/lib/types";
+import { formatAmount } from "@/lib/format";
 
 interface SummaryCardsProps {
   expenses: Expense[];
 }
-
-const formatAmount = (amount: number) =>
-  amount.toLocaleString(undefined, { style: "currency", currency: "USD" });
 
 export default function SummaryCards({ expenses }: SummaryCardsProps) {
   const total = expenses.reduce((sum, e) => sum + e.amount, 0);

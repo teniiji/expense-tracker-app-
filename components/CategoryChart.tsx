@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { Expense } from "@/lib/types";
 import { CATEGORY_COLORS, Category } from "@/lib/categories";
+import { formatAmount } from "@/lib/format";
 
 interface CategoryChartProps {
   expenses: Expense[];
@@ -51,7 +52,7 @@ export default function CategoryChart({ expenses }: CategoryChartProps) {
                 />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number) => value.toFixed(2)} />
+            <Tooltip formatter={(value: number) => formatAmount(value)} />
             <Legend />
           </PieChart>
         </ResponsiveContainer>
