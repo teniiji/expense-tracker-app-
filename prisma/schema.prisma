@@ -14,7 +14,9 @@ model Expense {
   description String?
   date        DateTime
   createdAt   DateTime @default(now())
+  lineUserId  String?
 
   @@index([date])
   @@index([category])
+  @@index([lineUserId])
 }
