@@ -5,11 +5,13 @@ A simple full-stack expense tracker: add, edit, delete, and filter expenses, wit
 ## Stack
 
 - Next.js 14 (App Router) + TypeScript
-- Prisma + SQLite (local file database, no external services required)
+- Prisma + PostgreSQL
 - Tailwind CSS
 - Recharts
 
 ## Getting Started
+
+Requires a PostgreSQL database — set `DATABASE_URL` in `.env` (see `.env.example`) to a connection string for a local Postgres instance or a hosted one (e.g. Vercel Postgres, Neon).
 
 ```bash
 npm install
@@ -18,8 +20,6 @@ npm run dev
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
-
-The SQLite database file is created at `prisma/dev.db` on first migration.
 
 ## Using it from your phone
 
