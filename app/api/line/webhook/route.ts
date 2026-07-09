@@ -17,31 +17,24 @@ async function streamToBase64(stream: NodeJS.ReadableStream): Promise<string> {
 
 async function buildUserContent(
   message: webhook.MessageContent
-): Promise<Anthropic.MessageParam["content"] | null> {
+): Promise<Anthropic.MessageParam["content"]> {
   if (message.type === "text") {
     return (message as webhook.TextMessageContent).text;
   }
 
-  if (message.type === "image") {
-    const image = message as webhook.ImageMessageContent;
-    if (image.contentProvider.type !== "line") {
-      return null;
-    }
-    const stream = await lineBlobClient.getMessageContent(image.id);
-    const base64 = await streamToBase64(stream);
-    return [
-      {
-        type: "image",
-        source: { type: "base64", media_type: "image/jpeg", data: base64 },
-      },
-      {
-        type: "text",
-        text: "นี่คือรูปที่ผู้ใช้ส่งมา ถ้าเป็นสลิปการโอนเงินให้อ่านยอดเงินและบันทึกเป็นรายการ",
-      },
-    ];
-  }
-
-  return null;
+  const image = message as webhook.ImageMessageContent;
+  const stream = await lineBlobClient.getMessageContent(image.id);
+  const base64 = await streamToBase64(stream);
+  return [
+    {
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: base64 },
+    },
+    {
+      type: "text",
+      text: "นี่คือรูปที่ผู้ใช้ส่งมา ถ้าเป็นสลิปการโอนเงินให้อ่านยอดเงินและบันทึกเป็นรายการ",
+    },
+  ];
 }
 
 async function handleEvent(event: webhook.Event): Promise<void> {
@@ -60,9 +53,6 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   let replyText: string;
   try {
     const userContent = await buildUserContent(event.message);
-    if (userContent === null) {
-      return;
-    }
     replyText = await runFinanceAgent(userContent, lineUserId);
   } catch (err) {
     console.error("[line/webhook] finance agent error:", err);
