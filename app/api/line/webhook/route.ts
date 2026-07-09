@@ -60,12 +60,10 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   }
 
   try {
-    console.log("[line/webhook] replying with:", JSON.stringify(replyText));
-    const result = await lineClient.replyMessage({
+    await lineClient.replyMessage({
       replyToken: event.replyToken,
       messages: [{ type: "text", text: replyText }],
     });
-    console.log("[line/webhook] LINE reply result:", JSON.stringify(result));
   } catch (err) {
     console.error("[line/webhook] LINE reply error:", err);
   }
@@ -88,7 +86,6 @@ export async function POST(request: NextRequest) {
   }
 
   const events = body.events ?? [];
-  console.log("[line/webhook] received", events.length, "event(s):", JSON.stringify(body));
 
   // Process events but never let a single failure block the 200 response —
   // LINE retries the whole webhook delivery on a non-2xx, which would
