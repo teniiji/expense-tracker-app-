@@ -3,9 +3,10 @@ import { validateSignature, webhook } from "@line/bot-sdk";
 import type Anthropic from "@anthropic-ai/sdk";
 import { lineClient, lineBlobClient } from "@/lib/lineClient";
 import { runFinanceAgent } from "@/lib/financeAgent";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 async function streamToBase64(stream: NodeJS.ReadableStream): Promise<string> {
   const chunks: Buffer[] = [];
@@ -45,6 +46,18 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     event.source?.type !== "user" ||
     !event.source.userId
   ) {
+    return;
+  }
+
+  // LINE retries webhook deliveries that don't get a timely 200 (e.g. a
+  // slow slip-image request that runs close to maxDuration). Record the
+  // event ID first so a retried delivery for the same event is a no-op
+  // instead of re-running the agent and creating a duplicate expense.
+  try {
+    await prisma.processedLineEvent.create({
+      data: { eventId: event.webhookEventId },
+    });
+  } catch {
     return;
   }
 

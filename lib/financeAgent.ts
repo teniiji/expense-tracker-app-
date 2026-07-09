@@ -145,7 +145,12 @@ async function getTransactionSummary(
   if (typeof from === "string" || typeof to === "string") {
     where.date = {
       ...(typeof from === "string" && from ? { gte: new Date(from) } : {}),
-      ...(typeof to === "string" && to ? { lte: new Date(to) } : {}),
+      // `to` is a date-only string (e.g. "2026-07-09"), which parses to
+      // UTC midnight. Use an exclusive upper bound one day later so the
+      // whole day is included instead of only timestamps at/before 00:00.
+      ...(typeof to === "string" && to
+        ? { lt: new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000) }
+        : {}),
     };
   }
 
@@ -234,5 +239,19 @@ export async function runFinanceAgent(
     messages.push({ role: "user", content: toolResults });
   }
 
-  return "ขอโทษค่ะ ดำเนินการไม่สำเร็จ ลองใหม่อีกครั้งนะคะ";
+  // The loop above may have already committed a tool's side effect (e.g.
+  // logged an expense) on its final turn without getting a chance to reply.
+  // Make one more call with tools disabled so the model must summarize what
+  // actually happened instead of the caller returning a generic "failed"
+  // message for work that already succeeded.
+  const finalResponse = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system,
+    messages,
+  });
+  const finalText = finalResponse.content.find(
+    (block): block is Anthropic.TextBlock => block.type === "text"
+  );
+  return finalText?.text.trim() || "ขอโทษค่ะ ดำเนินการไม่สำเร็จ ลองใหม่อีกครั้งนะคะ";
 }
