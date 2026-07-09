@@ -60,10 +60,12 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   }
 
   try {
-    await lineClient.replyMessage({
+    console.log("[line/webhook] replying with:", JSON.stringify(replyText));
+    const result = await lineClient.replyMessage({
       replyToken: event.replyToken,
       messages: [{ type: "text", text: replyText }],
     });
+    console.log("[line/webhook] LINE reply result:", JSON.stringify(result));
   } catch (err) {
     console.error("[line/webhook] LINE reply error:", err);
   }
