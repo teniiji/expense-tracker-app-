@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
   }
 
   const events = body.events ?? [];
+  console.log("[line/webhook] received", events.length, "event(s):", JSON.stringify(body));
 
   // Process events but never let a single failure block the 200 response —
   // LINE retries the whole webhook delivery on a non-2xx, which would
