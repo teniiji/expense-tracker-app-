@@ -1,15 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, webhook } from "@line/bot-sdk";
-import { lineClient } from "@/lib/lineClient";
+import type Anthropic from "@anthropic-ai/sdk";
+import { lineClient, lineBlobClient } from "@/lib/lineClient";
 import { runFinanceAgent } from "@/lib/financeAgent";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+async function streamToBase64(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("base64");
+}
+
+async function buildUserContent(
+  message: webhook.MessageContent
+): Promise<Anthropic.MessageParam["content"] | null> {
+  if (message.type === "text") {
+    return (message as webhook.TextMessageContent).text;
+  }
+
+  if (message.type === "image") {
+    const image = message as webhook.ImageMessageContent;
+    if (image.contentProvider.type !== "line") {
+      return null;
+    }
+    const stream = await lineBlobClient.getMessageContent(image.id);
+    const base64 = await streamToBase64(stream);
+    return [
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/jpeg", data: base64 },
+      },
+      {
+        type: "text",
+        text: "นี่คือรูปที่ผู้ใช้ส่งมา ถ้าเป็นสลิปการโอนเงินให้อ่านยอดเงินและบันทึกเป็นรายการ",
+      },
+    ];
+  }
+
+  return null;
+}
+
 async function handleEvent(event: webhook.Event): Promise<void> {
   if (
     event.type !== "message" ||
-    event.message.type !== "text" ||
+    (event.message.type !== "text" && event.message.type !== "image") ||
     !event.replyToken ||
     event.source?.type !== "user" ||
     !event.source.userId
@@ -18,11 +56,14 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   }
 
   const lineUserId = event.source.userId;
-  const userText = (event.message as webhook.TextMessageContent).text;
 
   let replyText: string;
   try {
-    replyText = await runFinanceAgent(userText, lineUserId);
+    const userContent = await buildUserContent(event.message);
+    if (userContent === null) {
+      return;
+    }
+    replyText = await runFinanceAgent(userContent, lineUserId);
   } catch (err) {
     console.error("[line/webhook] finance agent error:", err);
     replyText = "ขอโทษค่ะ เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะคะ";
