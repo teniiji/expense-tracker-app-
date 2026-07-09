@@ -7,10 +7,14 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get("category");
   const from = searchParams.get("from");
   const to = searchParams.get("to");
+  const lineUserId = searchParams.get("lineUserId");
 
   const where: Record<string, unknown> = {};
   if (category && category !== "All") {
     where.category = category;
+  }
+  if (lineUserId) {
+    where.lineUserId = lineUserId;
   }
   if (from || to) {
     where.date = {
