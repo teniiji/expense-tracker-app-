@@ -222,7 +222,17 @@ export async function runFinanceAgent(
       const textBlock = response.content.find(
         (block): block is Anthropic.TextBlock => block.type === "text"
       );
-      return textBlock?.text.trim() || "ขอโทษค่ะ ไม่สามารถตอบได้ในตอนนี้";
+      const text = textBlock?.text.trim();
+      if (!text) {
+        console.error(
+          "[financeAgent] empty model response, falling back:",
+          JSON.stringify({
+            stopReason: response.stop_reason,
+            contentTypes: response.content.map((b) => b.type),
+          })
+        );
+      }
+      return text || "ขอโทษค่ะ ไม่สามารถตอบได้ในตอนนี้";
     }
 
     messages.push({ role: "assistant", content: response.content });
