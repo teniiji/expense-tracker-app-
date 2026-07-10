@@ -5,8 +5,20 @@ import { prisma } from "./prisma";
 import { CATEGORIES } from "./categories";
 import { formatAmount } from "./format";
 
-const MODEL = "claude-haiku-4-5";
+// Haiku is fast/cheap and reliable for plain text, but has repeatedly
+// misread slips with busy/themed backgrounds (inventing reasons to decline
+// a perfectly legible transaction). Use a stronger model whenever the
+// message includes an image.
+const TEXT_MODEL = "claude-haiku-4-5";
+const VISION_MODEL = "claude-sonnet-5";
 const MAX_TOOL_TURNS = 3;
+
+function hasImageContent(content: Anthropic.MessageParam["content"]): boolean {
+  return (
+    typeof content !== "string" &&
+    content.some((block) => block.type === "image")
+  );
+}
 
 const tools: Anthropic.Tool[] = [
   {
@@ -354,13 +366,14 @@ export async function runFinanceAgent(
     slipImageUrl: pending?.slipImageUrl ?? slipImageUrl,
   };
   const system = buildSystemPrompt(pending);
+  const model = hasImageContent(userContent) ? VISION_MODEL : TEXT_MODEL;
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userContent },
   ];
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 1024,
       system,
       tools,
@@ -408,7 +421,7 @@ export async function runFinanceAgent(
   // actually happened instead of the caller returning a generic "failed"
   // message for work that already succeeded.
   const finalResponse = await anthropic.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 1024,
     system,
     messages,
