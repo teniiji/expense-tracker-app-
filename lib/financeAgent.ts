@@ -435,8 +435,12 @@ export async function runFinanceAgent(
     // call hold_transaction_for_purpose first. Force a tool call on the
     // first turn for image messages so every slip results in one of
     // log_transaction / hold_transaction_for_purpose / decline_unreadable_image,
-    // never a bare text reply with nothing persisted.
-    const forceToolUse = turn === 0 && hasImageContent(userContent);
+    // never a bare text reply with nothing persisted. Also force it when
+    // resuming a pending hold — the pendingNote already tells the model
+    // exactly which log_transaction call to make, but it has repeatedly
+    // ignored that and asked for the amount/purpose again as plain text
+    // instead, silently dropping the held transaction.
+    const forceToolUse = turn === 0 && (hasImageContent(userContent) || pending !== null);
     const response = await anthropic.messages.create({
       model,
       max_tokens: 1024,
