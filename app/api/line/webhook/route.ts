@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, webhook } from "@line/bot-sdk";
 import type Anthropic from "@anthropic-ai/sdk";
+import { Prisma } from "@prisma/client";
 import { lineClient, lineBlobClient } from "@/lib/lineClient";
 import { runFinanceAgent } from "@/lib/financeAgent";
 import { prisma } from "@/lib/prisma";
@@ -57,7 +58,14 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     await prisma.processedLineEvent.create({
       data: { eventId: event.webhookEventId },
     });
-  } catch {
+  } catch (err) {
+    // P2002 (unique constraint) means this event was already processed —
+    // a genuine, expected duplicate delivery, nothing to log. Anything
+    // else (e.g. the database being unreachable) is a real failure that
+    // would otherwise silently drop the message with no reply and no log.
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) {
+      console.error("[line/webhook] dedupe check failed:", err);
+    }
     return;
   }
 
