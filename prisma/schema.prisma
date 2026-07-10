@@ -29,3 +29,15 @@ model ProcessedLineEvent {
   eventId   String   @unique
   createdAt DateTime @default(now())
 }
+
+// A transaction whose amount/date the agent already read off a slip but
+// couldn't find a stated purpose for. Holds it per LINE user (stateless
+// webhook calls have no other way to remember it) until the user's next
+// text reply supplies the purpose, or it expires unanswered.
+model PendingTransaction {
+  id         String   @id @default(cuid())
+  lineUserId String   @unique
+  amount     Float
+  date       DateTime
+  createdAt  DateTime @default(now())
+}

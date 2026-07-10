@@ -39,6 +39,26 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "hold_transaction_for_purpose",
+    description:
+      "Use only when a slip/message clearly shows a completed transfer amount but states no purpose, memo, bill name, or merchant anywhere — nothing to log a real description from (e.g. a plain person-to-person transfer with just a recipient name). Temporarily holds the amount and date so the next message from this user can supply the purpose. Do not call log_transaction in the same turn as this — after calling this, your reply text must ask the user what the transaction was for.",
+    input_schema: {
+      type: "object",
+      properties: {
+        amount: {
+          type: "number",
+          description: "Transaction amount in Thai baht. Always positive.",
+        },
+        date: {
+          type: "string",
+          description:
+            "ISO 8601 date (YYYY-MM-DD) the transaction happened on. Omit to use today.",
+        },
+      },
+      required: ["amount"],
+    },
+  },
+  {
     name: "get_transaction_summary",
     description:
       "Look up totals from the user's own previously recorded transactions, optionally filtered by date range and/or category. Use this when the user asks about their own spending, debt, or savings history.",
@@ -62,21 +82,35 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
-function buildSystemPrompt(): string {
+type PendingTransactionInfo = { amount: number; date: Date };
+
+function buildSystemPrompt(pending: PendingTransactionInfo | null): string {
   const today = new Date().toISOString().slice(0, 10);
+  const pendingNote = pending
+    ? `\n\nหมายเหตุระบบ (สำคัญ): ข้อความก่อนหน้านี้คุณได้เรียก hold_transaction_for_purpose ไว้แล้วสำหรับจำนวนเงิน ${formatAmount(
+        pending.amount
+      )} วันที่ ${pending.date
+        .toISOString()
+        .slice(
+          0,
+          10
+        )} และถามผู้ใช้ไปว่าเป็นรายการอะไร ข้อความปัจจุบันของผู้ใช้คือคำตอบสำหรับจุดประสงค์ของรายการนั้น ให้เลือกหมวดหมู่ที่เหมาะสมจากคำตอบนี้ทันที (ใช้ Other ถ้าเดาไม่ได้จริงๆ) แล้วเรียก log_transaction ด้วย amount=${pending.amount} และ date="${pending.date
+        .toISOString()
+        .slice(0, 10)}" ในข้อความนี้เลย ห้ามถามซ้ำอีกเด็ดขาด`
+    : "";
   return `คุณคือผู้ช่วยด้านการเงินส่วนตัวที่ทำงานผ่าน LINE ให้กับแอปบันทึกรายจ่าย (expense tracker) วันนี้คือวันที่ ${today}
 
 หมวดหมู่ที่ใช้ในระบบมีเฉพาะ: ${CATEGORIES.join(", ")}
 
-ข้อจำกัดสำคัญที่ต้องรู้: แต่ละข้อความที่ผู้ใช้ส่งเข้ามาถูกประมวลผลแยกจากกันโดยสิ้นเชิง คุณ**ไม่มีความจำ**ข้อความหรือรูปก่อนหน้าเลย ดังนั้น**ห้ามถามคำถามกลับเพื่อขอข้อมูลเพิ่มเติมก่อนบันทึกเด็ดขาด** (เช่น ห้ามถามว่า "เป็นรายการอะไร" หรือ "หมวดหมู่ไหน") เพราะคุณจะไม่เห็นคำตอบที่ผู้ใช้ตอบกลับมาเชื่อมกับข้อมูลเดิม ทุกครั้งที่มีจำนวนเงินและหลักฐานว่าธุรกรรมเกิดขึ้นแล้ว ให้ตัดสินใจเลือกหมวดหมู่ที่ใกล้เคียงที่สุดเอง (ใช้ Other ถ้าเดาไม่ได้จริงๆ) แล้วเรียก log_transaction บันทึกให้เสร็จภายในข้อความเดียวเสมอ ไม่ต้องรอถามก่อน
+ข้อจำกัดสำคัญที่ต้องรู้: แต่ละข้อความที่ผู้ใช้ส่งเข้ามาถูกประมวลผลแยกจากกันโดยสิ้นเชิง คุณ**ไม่มีความจำ**ข้อความหรือรูปก่อนหน้าเลย ดังนั้น**ห้ามถามคำถามกลับเพื่อขอข้อมูลเพิ่มเติมก่อนบันทึกเด็ดขาด** (เช่น ห้ามถามว่า "หมวดหมู่ไหน") เพราะคุณจะไม่เห็นคำตอบที่ผู้ใช้ตอบกลับมาเชื่อมกับข้อมูลเดิม ทุกครั้งที่มีจำนวนเงินและหลักฐานว่าธุรกรรมเกิดขึ้นแล้ว ให้ตัดสินใจเลือกหมวดหมู่ที่ใกล้เคียงที่สุดเอง (ใช้ Other ถ้าเดาไม่ได้จริงๆ) แล้วเรียก log_transaction บันทึกให้เสร็จภายในข้อความเดียวเสมอ ไม่ต้องรอถามก่อน **ข้อยกเว้นเดียว**: ถ้าธุรกรรมนั้นไม่มีจุดประสงค์ระบุไว้เลยจริงๆ (ดูข้อ 4 ด้านล่าง) ให้ใช้ hold_transaction_for_purpose แทน แล้วถามกลับได้ — เพราะระบบจะจำยอดเงินไว้ชั่วคราวรอคำตอบในข้อความถัดไปของผู้ใช้คนเดียวกัน
 
 หน้าที่ของคุณมี 4 อย่าง:
 1. เมื่อผู้ใช้เล่าถึงธุรกรรมทางการเงินที่เกิดขึ้นแล้ว (ซื้อของ, จ่ายบิล, กู้เงิน, ชำระหนี้, ซื้อหุ้น/ลงทุน, ฝากเงิน) ให้เรียกใช้ log_transaction เพื่อบันทึกลงระบบทันที แล้วตอบยืนยันสั้นๆ เป็นภาษาไทย
 2. เมื่อผู้ใช้ถามเกี่ยวกับประวัติการเงินของตัวเอง (เช่น "เดือนนี้จ่ายหนี้ไปเท่าไหร่") ให้เรียกใช้ get_transaction_summary แล้วสรุปคำตอบเป็นภาษาไทย
 3. เมื่อผู้ใช้ถามคำถามความรู้ทั่วไปเกี่ยวกับการเงิน (เช่น อัตราดอกเบี้ย, วิธีลงทุน, การกู้ยืม) ที่ไม่เกี่ยวกับข้อมูลส่วนตัวของเขา ให้ตอบด้วยความรู้ทั่วไปโดยตรง ไม่ต้องเรียกเครื่องมือใดๆ และควรระบุว่าเป็นข้อมูลทั่วไป ไม่ใช่คำแนะนำทางการเงินจากผู้เชี่ยวชาญที่มีใบอนุญาต
-4. เมื่อผู้ใช้ส่งรูปสลิปการโอนเงิน/จ่ายบิล/ใบเสร็จมาให้ ให้อ่านยอดเงิน วันที่ และรายละเอียดที่เกี่ยวข้องจากรูป แล้วเรียกใช้ log_transaction เพื่อบันทึกทันทีในข้อความเดียวเหมือนกรณีข้อความปกติ (ห้ามถามหมวดหมู่กลับตามข้อจำกัดด้านบน) แอปธนาคาร/กระเป๋าเงินดิจิทัลของไทยทุกเจ้า ไม่ว่าจะเป็นธนาคารใด หรือแอปอย่างเป๋าตังก์ (Paotang), ทรูมันนี่, LINE Pay ฯลฯ (ไม่ใช่แค่รายชื่อตัวอย่างเช่น K PLUS, SCB Easy, Krungthai NEXT, Bualuang mBanking, ttb touch, MyMo, Krungsri App) มีสลิปหน้าตาและถ้อยคำไม่เหมือนกัน และมีธุรกรรมได้หลายแบบ เช่น โอนเงิน (ภายใน/ข้ามธนาคาร/พร้อมเพย์), จ่ายบิล, เติมเงิน, ชำระค่าสินค้า ฯลฯ **อย่ายึดติดกับถ้อยคำหรือหน้าตาสลิปแบบใดแบบหนึ่ง** ให้จับหลักการทั่วไปแทน: ถ้าเห็นคำหรือวลีที่สื่อว่าธุรกรรมทำสำเร็จแล้ว (คำภาษาไทยที่ลงท้ายด้วย "สำเร็จ" เช่น "โอนเงินสำเร็จ", "จ่ายบิลสำเร็จ", "ชำระเงินสำเร็จ", "เติมเงินสำเร็จ", "รายการสำเร็จ" หรือความหมายใกล้เคียง) ร่วมกับเครื่องหมายถูก/จำนวนเงิน/เลขที่รายการ ให้ถือว่าเป็นหลักฐานการชำระเงินที่ถูกต้องเสมอ ไม่ว่าจะเป็นธนาคารไหน ประเภทธุรกรรมอะไร หรือพื้นหลัง/ธีมตกแต่งเป็นแบบใดก็ตาม ห้ามใช้ภาพพื้นหลังหรือโลโก้มาตัดสินว่าเป็นตั๋ว/ใบสมัครสมาชิก/เอกสารอื่นเด็ดขาด ให้ดูเฉพาะข้อความและตัวเลขที่เป็นเนื้อหาจริงเท่านั้น เลือกหมวดหมู่ตามบริบทที่เห็นในสลิปจริงๆ ถ้ามีระบุไว้ (เช่น ข้อความหมายเหตุการโอน, ชื่อบิลที่จ่าย) ถ้าสลิปไม่ได้ระบุจุดประสงค์ไว้ ให้ใช้ Other เป็นหมวดหมู่ทันที ห้ามถามกลับ **ชื่อบุคคลหรือชื่อบัญชีของผู้รับโอน/ผู้ส่งเงิน (เช่น ข้อความในช่อง "ไปยัง"/"จาก") ไม่ใช่จุดประสงค์การโอน ห้ามนำมาใส่เป็น description และห้ามต่อเติม/เดาให้กลายเป็นชื่ออื่นที่ฟังดูสมเหตุสมผลกว่าเดิมเด็ดขาด (เช่น ห้ามเปลี่ยน "ไทยพลัส" ให้กลายเป็น "Thai Airways พลัส")** description ต้องคัดลอกเฉพาะข้อความหมายเหตุ/บันทึกการโอนที่เห็นในสลิปตามตัวอักษรเป๊ะๆ เท่านั้น ห้ามเดา ห้ามเติมคำ ห้ามขยายความแม้แต่คำเดียว ถ้าอ่านไม่ชัดหรือไม่มั่นใจว่าตัวอักษรคืออะไร ให้ปล่อย description ว่างไว้ดีกว่าเดา ห้ามแต่งคำอธิบาย (description) ขึ้นเองเด็ดขาดถ้าในสลิปไม่ได้ระบุจุดประสงค์ไว้ชัดเจน กรณีนั้นให้ปล่อย description ว่างไว้ ปฏิเสธการบันทึกเฉพาะกรณีที่ข้อความในสลิปเองชัดเจนว่ายังไม่สำเร็จ/ยังไม่ได้ชำระ หรืออ่านจำนวนเงินไม่ออกจริงๆ เท่านั้น
+4. เมื่อผู้ใช้ส่งรูปสลิปการโอนเงิน/จ่ายบิล/ใบเสร็จมาให้ ให้อ่านยอดเงิน วันที่ และรายละเอียดที่เกี่ยวข้องจากรูป แอปธนาคาร/กระเป๋าเงินดิจิทัลของไทยทุกเจ้า ไม่ว่าจะเป็นธนาคารใด หรือแอปอย่างเป๋าตังก์ (Paotang), ทรูมันนี่, LINE Pay ฯลฯ (ไม่ใช่แค่รายชื่อตัวอย่างเช่น K PLUS, SCB Easy, Krungthai NEXT, Bualuang mBanking, ttb touch, MyMo, Krungsri App) มีสลิปหน้าตาและถ้อยคำไม่เหมือนกัน และมีธุรกรรมได้หลายแบบ เช่น โอนเงิน (ภายใน/ข้ามธนาคาร/พร้อมเพย์), จ่ายบิล, เติมเงิน, ชำระค่าสินค้า ฯลฯ **อย่ายึดติดกับถ้อยคำหรือหน้าตาสลิปแบบใดแบบหนึ่ง** ให้จับหลักการทั่วไปแทน: ถ้าเห็นคำหรือวลีที่สื่อว่าธุรกรรมทำสำเร็จแล้ว (คำภาษาไทยที่ลงท้ายด้วย "สำเร็จ" เช่น "โอนเงินสำเร็จ", "จ่ายบิลสำเร็จ", "ชำระเงินสำเร็จ", "เติมเงินสำเร็จ", "รายการสำเร็จ" หรือความหมายใกล้เคียง) ร่วมกับเครื่องหมายถูก/จำนวนเงิน/เลขที่รายการ ให้ถือว่าเป็นหลักฐานการชำระเงินที่ถูกต้องเสมอ ไม่ว่าจะเป็นธนาคารไหน ประเภทธุรกรรมอะไร หรือพื้นหลัง/ธีมตกแต่งเป็นแบบใดก็ตาม ห้ามใช้ภาพพื้นหลังหรือโลโก้มาตัดสินว่าเป็นตั๋ว/ใบสมัครสมาชิก/เอกสารอื่นเด็ดขาด ให้ดูเฉพาะข้อความและตัวเลขที่เป็นเนื้อหาจริงเท่านั้น เลือกหมวดหมู่ตามบริบทที่เห็นในสลิปจริงๆ ถ้ามีระบุไว้ (เช่น ข้อความหมายเหตุการโอน, ชื่อบิลที่จ่าย) แล้วเรียก log_transaction บันทึกทันทีในข้อความเดียว **ถ้าสลิปไม่มีจุดประสงค์/หมายเหตุ/ชื่อบิล/ชื่อร้านระบุไว้เลยจริงๆ** (เช่น โอนเงินหาคนทั่วไปโดยไม่มีข้อความหมายเหตุใดๆ) **ให้เรียก hold_transaction_for_purpose แทน log_transaction แล้วถามผู้ใช้กลับสั้นๆ ว่าเป็นรายการอะไร** (กรณีนี้เท่านั้นที่อนุญาตให้ถามกลับได้) **ชื่อบุคคลหรือชื่อบัญชีของผู้รับโอน/ผู้ส่งเงิน (เช่น ข้อความในช่อง "ไปยัง"/"จาก") ไม่ใช่จุดประสงค์การโอน ห้ามนำมาใส่เป็น description และห้ามต่อเติม/เดาให้กลายเป็นชื่ออื่นที่ฟังดูสมเหตุสมผลกว่าเดิมเด็ดขาด (เช่น ห้ามเปลี่ยน "ไทยพลัส" ให้กลายเป็น "Thai Airways พลัส")** description ต้องคัดลอกเฉพาะข้อความหมายเหตุ/บันทึกการโอนที่เห็นในสลิปตามตัวอักษรเป๊ะๆ เท่านั้น ห้ามเดา ห้ามเติมคำ ห้ามขยายความแม้แต่คำเดียว ถ้าอ่านไม่ชัดหรือไม่มั่นใจว่าตัวอักษรคืออะไร ให้ปล่อย description ว่างไว้ดีกว่าเดา ปฏิเสธการบันทึกเฉพาะกรณีที่ข้อความในสลิปเองชัดเจนว่ายังไม่สำเร็จ/ยังไม่ได้ชำระ หรืออ่านจำนวนเงินไม่ออกจริงๆ เท่านั้น
 
-ตอบสั้น กระชับ เป็นกันเอง และเป็นภาษาไทยเสมอ เว้นแต่ผู้ใช้พิมพ์มาเป็นภาษาอื่น`;
+ตอบสั้น กระชับ เป็นกันเอง และเป็นภาษาไทยเสมอ เว้นแต่ผู้ใช้พิมพ์มาเป็นภาษาอื่น${pendingNote}`;
 }
 
 type LogTransactionInput = {
@@ -119,6 +153,54 @@ async function logTransaction(
   return `Logged: ${formatAmount(expense.amount)} (${expense.category}) on ${expense.date
     .toISOString()
     .slice(0, 10)}.`;
+}
+
+type HoldTransactionInput = {
+  amount?: unknown;
+  date?: unknown;
+};
+
+async function holdTransactionForPurpose(
+  input: HoldTransactionInput,
+  lineUserId: string
+): Promise<string> {
+  const { amount, date } = input;
+
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    return "Error: amount must be a positive number.";
+  }
+  const parsedDate = typeof date === "string" && date ? new Date(date) : new Date();
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Error: invalid date.";
+  }
+
+  await prisma.pendingTransaction.upsert({
+    where: { lineUserId },
+    create: { lineUserId, amount, date: parsedDate },
+    update: { amount, date: parsedDate, createdAt: new Date() },
+  });
+
+  return `Held ${formatAmount(amount)} pending a purpose. Ask the user what this transaction was for — do not log it yet.`;
+}
+
+const PENDING_TRANSACTION_EXPIRY_MS = 15 * 60 * 1000;
+
+async function claimPendingTransaction(
+  lineUserId: string
+): Promise<PendingTransactionInfo | null> {
+  const pending = await prisma.pendingTransaction.findUnique({
+    where: { lineUserId },
+  });
+  if (!pending) return null;
+
+  // Claim it (delete) regardless of age, so a later unrelated message never
+  // gets misread as answering a stale hold.
+  await prisma.pendingTransaction.delete({ where: { lineUserId } });
+
+  if (Date.now() - pending.createdAt.getTime() > PENDING_TRANSACTION_EXPIRY_MS) {
+    return null;
+  }
+  return { amount: pending.amount, date: pending.date };
 }
 
 type SummaryInput = {
@@ -185,6 +267,12 @@ async function executeTool(
     if (name === "log_transaction") {
       return await logTransaction(input as LogTransactionInput, lineUserId);
     }
+    if (name === "hold_transaction_for_purpose") {
+      return await holdTransactionForPurpose(
+        input as HoldTransactionInput,
+        lineUserId
+      );
+    }
     if (name === "get_transaction_summary") {
       return await getTransactionSummary(input as SummaryInput, lineUserId);
     }
@@ -200,7 +288,13 @@ export async function runFinanceAgent(
   userContent: Anthropic.MessageParam["content"],
   lineUserId: string
 ): Promise<string> {
-  const system = buildSystemPrompt();
+  // Only a plain text reply can complete a pending hold — an incoming image
+  // is always a new slip, never an answer to "what was this for?".
+  const pending =
+    typeof userContent === "string"
+      ? await claimPendingTransaction(lineUserId)
+      : null;
+  const system = buildSystemPrompt(pending);
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userContent },
   ];
