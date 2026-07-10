@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, webhook } from "@line/bot-sdk";
 import type Anthropic from "@anthropic-ai/sdk";
 import { Prisma } from "@prisma/client";
+import { put } from "@vercel/blob";
 import { lineClient, lineBlobClient } from "@/lib/lineClient";
 import { runFinanceAgent } from "@/lib/financeAgent";
 import { prisma } from "@/lib/prisma";
@@ -9,34 +10,64 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-async function streamToBase64(stream: NodeJS.ReadableStream): Promise<string> {
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
-  return Buffer.concat(chunks).toString("base64");
+  return Buffer.concat(chunks);
 }
 
+type UserContentResult = {
+  content: Anthropic.MessageParam["content"];
+  slipImageUrl: string | null;
+};
+
 async function buildUserContent(
-  message: webhook.MessageContent
-): Promise<Anthropic.MessageParam["content"]> {
+  message: webhook.MessageContent,
+  lineUserId: string
+): Promise<UserContentResult> {
   if (message.type === "text") {
-    return (message as webhook.TextMessageContent).text;
+    return {
+      content: (message as webhook.TextMessageContent).text,
+      slipImageUrl: null,
+    };
   }
 
   const image = message as webhook.ImageMessageContent;
   const stream = await lineBlobClient.getMessageContent(image.id);
-  const base64 = await streamToBase64(stream);
-  return [
-    {
-      type: "image",
-      source: { type: "base64", media_type: "image/jpeg", data: base64 },
-    },
-    {
-      type: "text",
-      text: "นี่คือรูปที่ผู้ใช้ส่งมา ถ้าเป็นสลิปการโอนเงินให้อ่านยอดเงินและบันทึกเป็นรายการ",
-    },
-  ];
+  const buffer = await streamToBuffer(stream);
+
+  // Back up every image message to Blob storage regardless of what the
+  // agent decides to do with it — a failed upload shouldn't block logging.
+  let slipImageUrl: string | null = null;
+  try {
+    const blob = await put(`slips/${lineUserId}/${Date.now()}-${image.id}.jpg`, buffer, {
+      access: "public",
+      contentType: "image/jpeg",
+    });
+    slipImageUrl = blob.url;
+  } catch (err) {
+    console.error("[line/webhook] blob upload error:", err);
+  }
+
+  return {
+    content: [
+      {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/jpeg",
+          data: buffer.toString("base64"),
+        },
+      },
+      {
+        type: "text",
+        text: "นี่คือรูปที่ผู้ใช้ส่งมา ถ้าเป็นสลิปการโอนเงินให้อ่านยอดเงินและบันทึกเป็นรายการ",
+      },
+    ],
+    slipImageUrl,
+  };
 }
 
 async function handleEvent(event: webhook.Event): Promise<void> {
@@ -73,8 +104,11 @@ async function handleEvent(event: webhook.Event): Promise<void> {
 
   let replyText: string;
   try {
-    const userContent = await buildUserContent(event.message);
-    replyText = await runFinanceAgent(userContent, lineUserId);
+    const { content: userContent, slipImageUrl } = await buildUserContent(
+      event.message,
+      lineUserId
+    );
+    replyText = await runFinanceAgent(userContent, lineUserId, slipImageUrl);
   } catch (err) {
     console.error("[line/webhook] finance agent error:", err);
     replyText = "ขอโทษค่ะ เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะคะ";

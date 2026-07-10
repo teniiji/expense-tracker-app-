@@ -8,13 +8,19 @@ datasource db {
 }
 
 model Expense {
-  id          String   @id @default(cuid())
-  amount      Float
-  category    String
-  description String?
-  date        DateTime
-  createdAt   DateTime @default(now())
-  lineUserId  String?
+  id              String   @id @default(cuid())
+  amount          Float
+  category        String
+  description     String?
+  date            DateTime
+  createdAt       DateTime @default(now())
+  lineUserId      String?
+  // Bank/wallet-issued transaction reference number read off a slip, if
+  // visible. Globally unique in the real world, so it doubles as a
+  // duplicate-slip guard — resubmitting the same slip hits this constraint
+  // instead of creating a second row.
+  referenceNumber String?  @unique
+  slipImageUrl    String?
 
   @@index([date])
   @@index([category])
@@ -35,9 +41,10 @@ model ProcessedLineEvent {
 // webhook calls have no other way to remember it) until the user's next
 // text reply supplies the purpose, or it expires unanswered.
 model PendingTransaction {
-  id         String   @id @default(cuid())
-  lineUserId String   @unique
-  amount     Float
-  date       DateTime
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  lineUserId   String   @unique
+  amount       Float
+  date         DateTime
+  slipImageUrl String?
+  createdAt    DateTime @default(now())
 }

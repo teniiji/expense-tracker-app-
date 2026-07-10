@@ -38,17 +38,19 @@ This only works while your computer is on and the dev server is running, and onl
 
 1. **Database**: create a Postgres database (Vercel Postgres or Neon) and copy its connection string.
    - If the provider gives you both a **pooled** and a **direct/unpooled** connection string (Neon and Vercel Postgres both do — e.g. Neon's pooler URL vs its direct URL, or Vercel Postgres's `POSTGRES_PRISMA_URL` vs `POSTGRES_URL_NON_POOLING`), use the **pooled** one for `DATABASE_URL` — serverless functions open many short-lived connections and a pooled connection avoids exhausting the database's connection limit.
-2. **Environment variables**: in the Vercel project settings, set:
+2. **Blob storage** (backs up LINE slip images): Vercel project → Storage tab → Create → Blob. This auto-injects `BLOB_READ_WRITE_TOKEN` into your project's environment variables — no manual copying needed.
+3. **Environment variables**: in the Vercel project settings, set:
    - `DATABASE_URL` — the pooled Postgres connection string from step 1
    - `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` — from the LINE Developers Console (Messaging API tab)
    - `ANTHROPIC_API_KEY` — from the Anthropic Console
-3. **Run migrations against production** (one-off, from your machine): `prisma migrate deploy` needs a **direct** (non-pooled) connection, since pooled/pgbouncer-style connections don't reliably support the transactions Prisma Migrate uses. Temporarily point `DATABASE_URL` at the direct connection string for this one command:
+   - `BLOB_READ_WRITE_TOKEN` — auto-set by step 2 above
+4. **Run migrations against production** (one-off, from your machine): `prisma migrate deploy` needs a **direct** (non-pooled) connection, since pooled/pgbouncer-style connections don't reliably support the transactions Prisma Migrate uses. Temporarily point `DATABASE_URL` at the direct connection string for this one command:
    ```bash
    DATABASE_URL="<direct-connection-string>" npx prisma migrate deploy
    ```
-4. **Deploy** — Vercel auto-detects Next.js, no `vercel.json` needed. `postinstall` already runs `prisma generate` on every install/build.
-5. **Update the LINE webhook URL** in the LINE Developers Console to `https://<your-vercel-domain>/api/line/webhook`, then hit "Verify".
-6. The LINE webhook route sets `maxDuration = 60` (in `app/api/line/webhook/route.ts`) for slip-image requests — this is within the Hobby plan's limit, but raise it if you're on a plan with a lower default and see timeouts on image messages.
+5. **Deploy** — Vercel auto-detects Next.js, no `vercel.json` needed. `postinstall` already runs `prisma generate` on every install/build.
+6. **Update the LINE webhook URL** in the LINE Developers Console to `https://<your-vercel-domain>/api/line/webhook`, then hit "Verify".
+7. The LINE webhook route sets `maxDuration = 60` (in `app/api/line/webhook/route.ts`) for slip-image requests — this is within the Hobby plan's limit, but raise it if you're on a plan with a lower default and see timeouts on image messages.
 
 ## Scripts
 

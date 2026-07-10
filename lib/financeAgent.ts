@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { Prisma } from "@prisma/client";
 import { anthropic } from "./anthropicClient";
 import { prisma } from "./prisma";
 import { CATEGORIES } from "./categories";
@@ -33,6 +34,11 @@ const tools: Anthropic.Tool[] = [
           type: "string",
           description:
             "ISO 8601 date (YYYY-MM-DD) the transaction happened on. Omit to use today.",
+        },
+        referenceNumber: {
+          type: "string",
+          description:
+            "The bank/wallet transaction reference number (รหัสอ้างอิง) shown on a slip, if visible. Copy it exactly as printed, character for character. Omit if not shown or not applicable (e.g. a plain text message with no slip).",
         },
       },
       required: ["amount", "category"],
@@ -82,7 +88,13 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
-type PendingTransactionInfo = { amount: number; date: Date };
+type PendingTransactionInfo = {
+  amount: number;
+  date: Date;
+  slipImageUrl: string | null;
+};
+
+type ToolContext = { lineUserId: string; slipImageUrl: string | null };
 
 function buildSystemPrompt(pending: PendingTransactionInfo | null): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -116,6 +128,8 @@ function buildSystemPrompt(pending: PendingTransactionInfo | null): string {
 
 ขั้นที่ 3 กฎการเขียน description: **ชื่อบุคคลหรือชื่อบัญชีของผู้รับโอน/ผู้ส่งเงิน (เช่น ข้อความในช่อง "ไปยัง"/"จาก") ไม่ใช่จุดประสงค์การโอน ห้ามนำมาใส่เป็น description และห้ามต่อเติม/เดาให้กลายเป็นชื่ออื่นที่ฟังดูสมเหตุสมผลกว่าเดิมเด็ดขาด (เช่น ห้ามเปลี่ยน "ไทยพลัส" ให้กลายเป็น "Thai Airways พลัส")** description ต้องคัดลอกเฉพาะข้อความหมายเหตุ/บันทึกการโอนที่เห็นในสลิปตามตัวอักษรเป๊ะๆ เท่านั้น ห้ามเดา ห้ามเติมคำ ห้ามขยายความแม้แต่คำเดียว ถ้าอ่านไม่ชัดหรือไม่มั่นใจว่าตัวอักษรคืออะไร ให้ปล่อย description ว่างไว้ดีกว่าเดา
 
+ขั้นที่ 4 กันรายการซ้ำ: ถ้าสลิปมีเลขที่รายการ/รหัสอ้างอิง (เช่น "รหัสอ้างอิง", "เลขที่รายการ") ให้คัดลอกใส่ referenceNumber ตามตัวอักษรเป๊ะๆ ระบบจะเช็คให้อัตโนมัติว่าเคยบันทึกสลิปนี้ไปแล้วหรือยัง ถ้า log_transaction แจ้งกลับมาว่าเป็นรายการซ้ำ ให้บอกผู้ใช้ตรงๆ ว่าเคยบันทึกรายการนี้ไปแล้ว ไม่ต้องบันทึกซ้ำอีก
+
 ตอบสั้น กระชับ เป็นกันเอง และเป็นภาษาไทยเสมอ เว้นแต่ผู้ใช้พิมพ์มาเป็นภาษาอื่น${pendingNote}`;
 }
 
@@ -124,13 +138,14 @@ type LogTransactionInput = {
   category?: unknown;
   description?: unknown;
   date?: unknown;
+  referenceNumber?: unknown;
 };
 
 async function logTransaction(
   input: LogTransactionInput,
-  lineUserId: string
+  ctx: ToolContext
 ): Promise<string> {
-  const { amount, category, description, date } = input;
+  const { amount, category, description, date, referenceNumber } = input;
 
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     return "Error: amount must be a positive number.";
@@ -146,19 +161,35 @@ async function logTransaction(
     return "Error: invalid date.";
   }
 
-  const expense = await prisma.expense.create({
-    data: {
-      amount,
-      category,
-      description: typeof description === "string" ? description : null,
-      date: parsedDate,
-      lineUserId,
-    },
-  });
+  try {
+    const expense = await prisma.expense.create({
+      data: {
+        amount,
+        category,
+        description: typeof description === "string" ? description : null,
+        date: parsedDate,
+        lineUserId: ctx.lineUserId,
+        referenceNumber:
+          typeof referenceNumber === "string" && referenceNumber
+            ? referenceNumber
+            : null,
+        slipImageUrl: ctx.slipImageUrl,
+      },
+    });
 
-  return `Logged: ${formatAmount(expense.amount)} (${expense.category}) on ${expense.date
-    .toISOString()
-    .slice(0, 10)}.`;
+    return `Logged: ${formatAmount(expense.amount)} (${expense.category}) on ${expense.date
+      .toISOString()
+      .slice(0, 10)}.`;
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002" &&
+      (err.meta?.target as string[] | undefined)?.includes("referenceNumber")
+    ) {
+      return "Error: a transaction with this exact reference number was already recorded — this looks like a duplicate slip. Tell the user it was already logged and do not log it again.";
+    }
+    throw err;
+  }
 }
 
 type HoldTransactionInput = {
@@ -168,7 +199,7 @@ type HoldTransactionInput = {
 
 async function holdTransactionForPurpose(
   input: HoldTransactionInput,
-  lineUserId: string
+  ctx: ToolContext
 ): Promise<string> {
   const { amount, date } = input;
 
@@ -181,9 +212,19 @@ async function holdTransactionForPurpose(
   }
 
   await prisma.pendingTransaction.upsert({
-    where: { lineUserId },
-    create: { lineUserId, amount, date: parsedDate },
-    update: { amount, date: parsedDate, createdAt: new Date() },
+    where: { lineUserId: ctx.lineUserId },
+    create: {
+      lineUserId: ctx.lineUserId,
+      amount,
+      date: parsedDate,
+      slipImageUrl: ctx.slipImageUrl,
+    },
+    update: {
+      amount,
+      date: parsedDate,
+      slipImageUrl: ctx.slipImageUrl,
+      createdAt: new Date(),
+    },
   });
 
   return `Held ${formatAmount(amount)} pending a purpose. Ask the user what this transaction was for — do not log it yet.`;
@@ -206,7 +247,11 @@ async function claimPendingTransaction(
   if (Date.now() - pending.createdAt.getTime() > PENDING_TRANSACTION_EXPIRY_MS) {
     return null;
   }
-  return { amount: pending.amount, date: pending.date };
+  return {
+    amount: pending.amount,
+    date: pending.date,
+    slipImageUrl: pending.slipImageUrl,
+  };
 }
 
 type SummaryInput = {
@@ -267,20 +312,20 @@ async function getTransactionSummary(
 async function executeTool(
   name: string,
   input: unknown,
-  lineUserId: string
+  ctx: ToolContext
 ): Promise<string> {
   try {
     if (name === "log_transaction") {
-      return await logTransaction(input as LogTransactionInput, lineUserId);
+      return await logTransaction(input as LogTransactionInput, ctx);
     }
     if (name === "hold_transaction_for_purpose") {
       return await holdTransactionForPurpose(
         input as HoldTransactionInput,
-        lineUserId
+        ctx
       );
     }
     if (name === "get_transaction_summary") {
-      return await getTransactionSummary(input as SummaryInput, lineUserId);
+      return await getTransactionSummary(input as SummaryInput, ctx.lineUserId);
     }
     return `Unknown tool: ${name}`;
   } catch (err) {
@@ -292,7 +337,8 @@ async function executeTool(
 
 export async function runFinanceAgent(
   userContent: Anthropic.MessageParam["content"],
-  lineUserId: string
+  lineUserId: string,
+  slipImageUrl: string | null = null
 ): Promise<string> {
   // Only a plain text reply can complete a pending hold — an incoming image
   // is always a new slip, never an answer to "what was this for?".
@@ -300,6 +346,13 @@ export async function runFinanceAgent(
     typeof userContent === "string"
       ? await claimPendingTransaction(lineUserId)
       : null;
+  // Resuming a pending hold: the current message is just text, so the
+  // relevant slip image (if any) is the one stored with the hold, not this
+  // call's own (null) slipImageUrl.
+  const ctx: ToolContext = {
+    lineUserId,
+    slipImageUrl: pending?.slipImageUrl ?? slipImageUrl,
+  };
   const system = buildSystemPrompt(pending);
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userContent },
@@ -339,7 +392,7 @@ export async function runFinanceAgent(
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
-      const result = await executeTool(block.name, block.input, lineUserId);
+      const result = await executeTool(block.name, block.input, ctx);
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
