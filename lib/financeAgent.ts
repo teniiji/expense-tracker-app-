@@ -326,6 +326,7 @@ async function executeTool(
   input: unknown,
   ctx: ToolContext
 ): Promise<string> {
+  console.log(`[financeAgent] tool call: ${name}`, JSON.stringify(input));
   try {
     if (name === "log_transaction") {
       return await logTransaction(input as LogTransactionInput, ctx);
@@ -389,6 +390,9 @@ export async function runFinanceAgent(
         (block): block is Anthropic.TextBlock => block.type === "text"
       );
       const text = textBlock?.text.trim();
+      console.log(
+        `[financeAgent] no tool called on turn ${turn}, replying with text only`
+      );
       if (!text) {
         console.error(
           "[financeAgent] empty model response, falling back:",
