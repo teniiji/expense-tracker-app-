@@ -41,10 +41,11 @@ model ProcessedLineEvent {
 // webhook calls have no other way to remember it) until the user's next
 // text reply supplies the purpose, or it expires unanswered.
 model PendingTransaction {
-  id           String   @id @default(cuid())
-  lineUserId   String   @unique
-  amount       Float
-  date         DateTime
-  slipImageUrl String?
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  lineUserId      String   @unique
+  amount          Float
+  date            DateTime
+  slipImageUrl    String?
+  referenceNumber String?
+  createdAt       DateTime @default(now())
 }

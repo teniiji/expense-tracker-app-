@@ -72,6 +72,11 @@ const tools: Anthropic.Tool[] = [
           description:
             "ISO 8601 date (YYYY-MM-DD) the transaction happened on. Omit to use today.",
         },
+        referenceNumber: {
+          type: "string",
+          description:
+            "The bank/wallet transaction reference number (รหัสอ้างอิง) shown on the slip, if visible. Copy it exactly as printed. Omit if not shown.",
+        },
       },
       required: ["amount"],
     },
@@ -120,6 +125,7 @@ type PendingTransactionInfo = {
   amount: number;
   date: Date;
   slipImageUrl: string | null;
+  referenceNumber: string | null;
 };
 
 type ToolContext = { lineUserId: string; slipImageUrl: string | null };
@@ -134,9 +140,17 @@ function buildSystemPrompt(pending: PendingTransactionInfo | null): string {
         .slice(
           0,
           10
-        )} และถามผู้ใช้ไปว่าเป็นรายการอะไร ข้อความปัจจุบันของผู้ใช้คือคำตอบสำหรับจุดประสงค์ของรายการนั้น ให้เลือกหมวดหมู่ที่เหมาะสมจากคำตอบนี้ทันที (ใช้ Other ถ้าเดาไม่ได้จริงๆ) แล้วเรียก log_transaction ด้วย amount=${pending.amount} และ date="${pending.date
+        )}${
+        pending.referenceNumber
+          ? ` เลขอ้างอิง "${pending.referenceNumber}"`
+          : ""
+      } และถามผู้ใช้ไปว่าเป็นรายการอะไร ข้อความปัจจุบันของผู้ใช้คือคำตอบสำหรับจุดประสงค์ของรายการนั้น ให้เลือกหมวดหมู่ที่เหมาะสมจากคำตอบนี้ทันที (ใช้ Other ถ้าเดาไม่ได้จริงๆ) แล้วเรียก log_transaction ด้วย amount=${pending.amount}, date="${pending.date
         .toISOString()
-        .slice(0, 10)}" ในข้อความนี้เลย ห้ามถามซ้ำอีกเด็ดขาด`
+        .slice(0, 10)}"${
+        pending.referenceNumber
+          ? `, referenceNumber="${pending.referenceNumber}"`
+          : ""
+      } ในข้อความนี้เลย ห้ามถามซ้ำอีกเด็ดขาด`
     : "";
   return `คุณคือผู้ช่วยด้านการเงินส่วนตัวที่ทำงานผ่าน LINE ให้กับแอปบันทึกรายจ่าย (expense tracker) วันนี้คือวันที่ ${today}
 
@@ -223,13 +237,14 @@ async function logTransaction(
 type HoldTransactionInput = {
   amount?: unknown;
   date?: unknown;
+  referenceNumber?: unknown;
 };
 
 async function holdTransactionForPurpose(
   input: HoldTransactionInput,
   ctx: ToolContext
 ): Promise<string> {
-  const { amount, date } = input;
+  const { amount, date, referenceNumber } = input;
 
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     return "Error: amount must be a positive number.";
@@ -237,6 +252,22 @@ async function holdTransactionForPurpose(
   const parsedDate = typeof date === "string" && date ? new Date(date) : new Date();
   if (Number.isNaN(parsedDate.getTime())) {
     return "Error: invalid date.";
+  }
+  const refNumber =
+    typeof referenceNumber === "string" && referenceNumber ? referenceNumber : null;
+
+  // A duplicate slip with no stated purpose would otherwise sail through
+  // this hold-and-ask path unchecked, since the real duplicate guard only
+  // runs inside log_transaction. Check it here too, against already-logged
+  // expenses, so a resent purpose-less slip is caught immediately instead
+  // of asking the user the same question twice.
+  if (refNumber) {
+    const existing = await prisma.expense.findUnique({
+      where: { referenceNumber: refNumber },
+    });
+    if (existing) {
+      return `Error: a transaction with this exact reference number was already recorded — this looks like a duplicate slip. Tell the user it was already logged and do not hold or log it again.`;
+    }
   }
 
   await prisma.pendingTransaction.upsert({
@@ -246,11 +277,13 @@ async function holdTransactionForPurpose(
       amount,
       date: parsedDate,
       slipImageUrl: ctx.slipImageUrl,
+      referenceNumber: refNumber,
     },
     update: {
       amount,
       date: parsedDate,
       slipImageUrl: ctx.slipImageUrl,
+      referenceNumber: refNumber,
       createdAt: new Date(),
     },
   });
@@ -279,6 +312,7 @@ async function claimPendingTransaction(
     amount: pending.amount,
     date: pending.date,
     slipImageUrl: pending.slipImageUrl,
+    referenceNumber: pending.referenceNumber,
   };
 }
 
