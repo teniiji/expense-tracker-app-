@@ -435,19 +435,28 @@ export async function runFinanceAgent(
     // call hold_transaction_for_purpose first. Force a tool call on the
     // first turn for image messages so every slip results in one of
     // log_transaction / hold_transaction_for_purpose / decline_unreadable_image,
-    // never a bare text reply with nothing persisted. Also force it when
-    // resuming a pending hold — the pendingNote already tells the model
-    // exactly which log_transaction call to make, but it has repeatedly
-    // ignored that and asked for the amount/purpose again as plain text
-    // instead, silently dropping the held transaction.
-    const forceToolUse = turn === 0 && (hasImageContent(userContent) || pending !== null);
+    // never a bare text reply with nothing persisted.
+    //
+    // Resuming a pending hold needs a *specific* forced tool, not just any
+    // tool: forcing "any" still let the model pick hold_transaction_for_purpose
+    // again with no amount (since that's the tool it just used), which fails
+    // validation and comes back as a text-only "tell me the amount" reply on
+    // the next turn — silently dropping the held transaction. The pendingNote
+    // already tells the model the exact log_transaction call to make, so
+    // force that tool specifically.
+    let toolChoice: Anthropic.ToolChoice | undefined;
+    if (turn === 0 && pending !== null) {
+      toolChoice = { type: "tool", name: "log_transaction" };
+    } else if (turn === 0 && hasImageContent(userContent)) {
+      toolChoice = { type: "any" };
+    }
     const response = await anthropic.messages.create({
       model,
       max_tokens: 1024,
       system,
       tools,
       messages,
-      ...(forceToolUse ? { tool_choice: { type: "any" as const } } : {}),
+      ...(toolChoice ? { tool_choice: toolChoice } : {}),
     });
 
     const toolUseBlocks = response.content.filter(
