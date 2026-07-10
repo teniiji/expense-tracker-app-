@@ -5,7 +5,7 @@ import { prisma } from "./prisma";
 import { CATEGORIES } from "./categories";
 import { formatAmount } from "./format";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = "claude-sonnet-5";
 const MAX_TOOL_TURNS = 3;
 
 const tools: Anthropic.Tool[] = [
