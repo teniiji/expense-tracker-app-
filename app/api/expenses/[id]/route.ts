@@ -31,6 +31,14 @@ export async function PUT(
         description: typeof description === "string" ? description : null,
         date: new Date(date),
       },
+      select: {
+        id: true,
+        amount: true,
+        category: true,
+        description: true,
+        date: true,
+        createdAt: true,
+      },
     });
     return NextResponse.json(expense);
   } catch {
