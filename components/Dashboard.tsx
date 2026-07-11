@@ -7,6 +7,7 @@ import { downloadExpensesCsv } from "@/lib/csv";
 import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseFilters, { Filters } from "@/components/ExpenseFilters";
 import ExpenseList from "@/components/ExpenseList";
+import LineUsersPanel from "@/components/LineUsersPanel";
 import SummaryCards from "@/components/SummaryCards";
 import CategoryChart from "@/components/CategoryChart";
 import TrendChart from "@/components/TrendChart";
@@ -181,6 +182,8 @@ export default function Dashboard() {
           onExportCsv={handleExportCsv}
         />
       )}
+
+      <LineUsersPanel />
 
       <ConfirmDialog
         open={pendingDelete !== null}
