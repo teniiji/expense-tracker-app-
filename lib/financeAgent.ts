@@ -408,7 +408,7 @@ async function executeTool(
 export async function runFinanceAgent(
   userContent: Anthropic.MessageParam["content"],
   lineUserId: string,
-  slipImageUrl: string | null = null
+  slipImageUrlPromise: Promise<string | null> = Promise.resolve(null)
 ): Promise<string> {
   // Only a plain text reply can complete a pending hold — an incoming image
   // is always a new slip, never an answer to "what was this for?".
@@ -416,13 +416,20 @@ export async function runFinanceAgent(
     typeof userContent === "string"
       ? await claimPendingTransaction(lineUserId)
       : null;
-  // Resuming a pending hold: the current message is just text, so the
-  // relevant slip image (if any) is the one stored with the hold, not this
-  // call's own (null) slipImageUrl.
-  const ctx: ToolContext = {
-    lineUserId,
-    slipImageUrl: pending?.slipImageUrl ?? slipImageUrl,
-  };
+
+  // The caller kicks off the Blob upload before calling this function but
+  // doesn't await it, so it runs concurrently with the first Claude API
+  // round-trip below instead of blocking it. Only resolve it once a tool
+  // call actually needs it (never for a pending-hold resume, which already
+  // has its own stored slip URL).
+  let resolvedSlipImageUrl: string | null | undefined;
+  async function resolveSlipImageUrl(): Promise<string | null> {
+    if (resolvedSlipImageUrl === undefined) {
+      resolvedSlipImageUrl = pending?.slipImageUrl ?? (await slipImageUrlPromise);
+    }
+    return resolvedSlipImageUrl;
+  }
+
   const system = buildSystemPrompt(pending);
   const model = hasImageContent(userContent) ? VISION_MODEL : TEXT_MODEL;
   const messages: Anthropic.MessageParam[] = [
@@ -485,6 +492,10 @@ export async function runFinanceAgent(
 
     messages.push({ role: "assistant", content: response.content });
 
+    const ctx: ToolContext = {
+      lineUserId,
+      slipImageUrl: await resolveSlipImageUrl(),
+    };
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
       const result = await executeTool(block.name, block.input, ctx);
