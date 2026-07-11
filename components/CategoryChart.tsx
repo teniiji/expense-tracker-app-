@@ -8,23 +8,15 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { Expense } from "@/lib/types";
 import { CATEGORY_COLORS, Category } from "@/lib/categories";
 import { formatAmount } from "@/lib/format";
 
 interface CategoryChartProps {
-  expenses: Expense[];
+  data: { category: string; total: number }[];
 }
 
-export default function CategoryChart({ expenses }: CategoryChartProps) {
-  const totals = new Map<string, number>();
-  for (const e of expenses) {
-    totals.set(e.category, (totals.get(e.category) ?? 0) + e.amount);
-  }
-  const data = Array.from(totals.entries()).map(([name, value]) => ({
-    name,
-    value,
-  }));
+export default function CategoryChart({ data: byCategory }: CategoryChartProps) {
+  const data = byCategory.map((d) => ({ name: d.category, value: d.total }));
 
   return (
     <div className="bg-white rounded-lg shadow p-4">

@@ -1,34 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CATEGORIES } from "@/lib/categories";
+import { buildExpenseWhere } from "@/lib/expenseFilters";
+
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const category = searchParams.get("category");
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-  const lineUserId = searchParams.get("lineUserId");
+  const where = buildExpenseWhere(searchParams);
 
-  const where: Record<string, unknown> = {};
-  if (category && category !== "All") {
-    where.category = category;
-  }
-  if (lineUserId) {
-    where.lineUserId = lineUserId;
-  }
-  if (from || to) {
-    where.date = {
-      ...(from ? { gte: new Date(from) } : {}),
-      ...(to ? { lte: new Date(to) } : {}),
-    };
-  }
+  const page = Math.max(1, Number(searchParams.get("page")) || 1);
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, Number(searchParams.get("pageSize")) || DEFAULT_PAGE_SIZE)
+  );
 
-  const expenses = await prisma.expense.findMany({
-    where,
-    orderBy: { date: "desc" },
-  });
+  const [data, total] = await Promise.all([
+    prisma.expense.findMany({
+      where,
+      orderBy: { date: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.expense.count({ where }),
+  ]);
 
-  return NextResponse.json(expenses);
+  return NextResponse.json({ data, total, page, pageSize });
 }
 
 export async function POST(request: NextRequest) {

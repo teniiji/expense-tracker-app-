@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Expense } from "@/lib/types";
 import { formatAmount } from "@/lib/format";
-import { downloadExpensesCsv } from "@/lib/csv";
-
-const PAGE_SIZE = 10;
 
 interface ExpenseListProps {
   expenses: Expense[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
   onEdit: (expense: Expense) => void;
   onDeleteRequest: (expense: Expense) => void;
+  onExportCsv: () => void;
 }
 
 const formatDate = (iso: string) =>
@@ -22,16 +23,15 @@ const formatDate = (iso: string) =>
 
 export default function ExpenseList({
   expenses,
+  total,
+  page,
+  pageSize,
+  onPageChange,
   onEdit,
   onDeleteRequest,
+  onExportCsv,
 }: ExpenseListProps) {
-  const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    setPage(1);
-  }, [expenses]);
-
-  if (expenses.length === 0) {
+  if (total === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-8 text-center text-slate-500">
         No expenses yet. Add one above to get started.
@@ -39,21 +39,18 @@ export default function ExpenseList({
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(expenses.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const start = (currentPage - 1) * PAGE_SIZE;
-  const pageItems = expenses.slice(start, start + PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = (page - 1) * pageSize;
 
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100">
         <p className="text-sm text-slate-500">
-          Showing {start + 1}–{Math.min(start + PAGE_SIZE, expenses.length)} of{" "}
-          {expenses.length}
+          Showing {start + 1}–{Math.min(start + pageSize, total)} of {total}
         </p>
         <button
           type="button"
-          onClick={() => downloadExpensesCsv(expenses)}
+          onClick={onExportCsv}
           className="text-sm text-slate-600 border border-slate-300 rounded px-3 py-1.5 hover:bg-slate-50"
         >
           Export CSV
@@ -72,7 +69,7 @@ export default function ExpenseList({
             </tr>
           </thead>
           <tbody>
-            {pageItems.map((expense) => (
+            {expenses.map((expense) => (
               <tr key={expense.id} className="border-t border-slate-100">
                 <td className="px-4 py-2 whitespace-nowrap">
                   {formatDate(expense.date)}
@@ -108,19 +105,19 @@ export default function ExpenseList({
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
           <button
             type="button"
-            disabled={currentPage === 1}
-            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 1}
+            onClick={() => onPageChange(page - 1)}
             className="text-sm px-3 py-1.5 border border-slate-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Prev
           </button>
           <p className="text-sm text-slate-500">
-            Page {currentPage} of {totalPages}
+            Page {page} of {totalPages}
           </p>
           <button
             type="button"
-            disabled={currentPage === totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            disabled={page === totalPages}
+            onClick={() => onPageChange(page + 1)}
             className="text-sm px-3 py-1.5 border border-slate-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Next
