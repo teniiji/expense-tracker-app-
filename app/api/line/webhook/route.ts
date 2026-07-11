@@ -20,7 +20,7 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
 
 type UserContentResult = {
   content: Anthropic.MessageParam["content"];
-  slipImageUrl: string | null;
+  slipImageUrlPromise: Promise<string | null>;
 };
 
 async function buildUserContent(
@@ -30,7 +30,7 @@ async function buildUserContent(
   if (message.type === "text") {
     return {
       content: (message as webhook.TextMessageContent).text,
-      slipImageUrl: null,
+      slipImageUrlPromise: Promise.resolve(null),
     };
   }
 
@@ -40,16 +40,20 @@ async function buildUserContent(
 
   // Back up every image message to Blob storage regardless of what the
   // agent decides to do with it — a failed upload shouldn't block logging.
-  let slipImageUrl: string | null = null;
-  try {
-    const blob = await put(`slips/${lineUserId}/${Date.now()}-${image.id}.jpg`, buffer, {
-      access: "public",
-      contentType: "image/jpeg",
+  // Deliberately not awaited here: the upload has no dependency on the
+  // Claude vision call below, so kicking it off and handing back the
+  // in-flight promise lets the two network calls run concurrently instead
+  // of the vision call waiting for the upload to finish first.
+  const slipImageUrlPromise = put(
+    `slips/${lineUserId}/${Date.now()}-${image.id}.jpg`,
+    buffer,
+    { access: "public", contentType: "image/jpeg" }
+  )
+    .then((blob) => blob.url)
+    .catch((err) => {
+      console.error("[line/webhook] blob upload error:", err);
+      return null;
     });
-    slipImageUrl = blob.url;
-  } catch (err) {
-    console.error("[line/webhook] blob upload error:", err);
-  }
 
   return {
     content: [
@@ -66,7 +70,7 @@ async function buildUserContent(
         text: "นี่คือรูปที่ผู้ใช้ส่งมา ถ้าเป็นสลิปการโอนเงินให้อ่านยอดเงินและบันทึกเป็นรายการ",
       },
     ],
-    slipImageUrl,
+    slipImageUrlPromise,
   };
 }
 
@@ -104,11 +108,11 @@ async function handleEvent(event: webhook.Event): Promise<void> {
 
   let replyText: string;
   try {
-    const { content: userContent, slipImageUrl } = await buildUserContent(
+    const { content: userContent, slipImageUrlPromise } = await buildUserContent(
       event.message,
       lineUserId
     );
-    replyText = await runFinanceAgent(userContent, lineUserId, slipImageUrl);
+    replyText = await runFinanceAgent(userContent, lineUserId, slipImageUrlPromise);
   } catch (err) {
     console.error("[line/webhook] finance agent error:", err);
     replyText = "ขอโทษค่ะ เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะคะ";

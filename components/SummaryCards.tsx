@@ -1,51 +1,24 @@
-import { Expense } from "@/lib/types";
+import { ExpenseSummary } from "@/lib/types";
 import { formatAmount } from "@/lib/format";
 
 interface SummaryCardsProps {
-  expenses: Expense[];
+  summary: ExpenseSummary;
 }
 
-export default function SummaryCards({ expenses }: SummaryCardsProps) {
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-  const now = new Date();
-  const thisMonth = expenses
-    .filter((e) => {
-      const d = new Date(e.date);
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth()
-      );
-    })
-    .reduce((sum, e) => sum + e.amount, 0);
-
-  const topCategory = (() => {
-    const totals = new Map<string, number>();
-    for (const e of expenses) {
-      totals.set(e.category, (totals.get(e.category) ?? 0) + e.amount);
-    }
-    let best: [string, number] | null = null;
-    for (const entry of totals) {
-      if (!best || entry[1] > best[1]) best = entry;
-    }
-    return best;
-  })();
-
+export default function SummaryCards({ summary }: SummaryCardsProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div className="bg-white rounded-lg shadow p-4">
         <p className="text-sm text-slate-500">Total spend</p>
-        <p className="text-2xl font-semibold">{formatAmount(total)}</p>
+        <p className="text-2xl font-semibold">{formatAmount(summary.total)}</p>
       </div>
       <div className="bg-white rounded-lg shadow p-4">
         <p className="text-sm text-slate-500">This month</p>
-        <p className="text-2xl font-semibold">{formatAmount(thisMonth)}</p>
+        <p className="text-2xl font-semibold">{formatAmount(summary.thisMonth)}</p>
       </div>
       <div className="bg-white rounded-lg shadow p-4">
         <p className="text-sm text-slate-500">Top category</p>
-        <p className="text-2xl font-semibold">
-          {topCategory ? topCategory[0] : "—"}
-        </p>
+        <p className="text-2xl font-semibold">{summary.topCategory ?? "—"}</p>
       </div>
     </div>
   );
