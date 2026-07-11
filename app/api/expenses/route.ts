@@ -19,6 +19,16 @@ export async function GET(request: NextRequest) {
   const [data, total] = await Promise.all([
     prisma.expense.findMany({
       where,
+      // The dashboard only ever reads these fields (see lib/types.ts) — no
+      // need to pull lineUserId/referenceNumber/slipImageUrl over the wire.
+      select: {
+        id: true,
+        amount: true,
+        category: true,
+        description: true,
+        date: true,
+        createdAt: true,
+      },
       orderBy: { date: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -52,6 +62,14 @@ export async function POST(request: NextRequest) {
       category,
       description: typeof description === "string" ? description : null,
       date: new Date(date),
+    },
+    select: {
+      id: true,
+      amount: true,
+      category: true,
+      description: true,
+      date: true,
+      createdAt: true,
     },
   });
 

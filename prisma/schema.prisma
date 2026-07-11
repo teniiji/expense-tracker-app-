@@ -24,7 +24,12 @@ model Expense {
 
   @@index([date])
   @@index([category])
-  @@index([lineUserId])
+  // get_transaction_summary always filters by lineUserId, often together
+  // with a date range — a composite index serves that directly instead of
+  // Postgres bitmap-AND-ing two single-column indexes. Still usable for
+  // lineUserId-only lookups since it's the leading column, so the old
+  // standalone index([lineUserId]) is redundant with this.
+  @@index([lineUserId, date])
 }
 
 // Records LINE webhook events that have already been processed, so a
