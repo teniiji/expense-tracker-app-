@@ -16,11 +16,12 @@ export async function GET(request: NextRequest) {
     Math.max(1, Number(searchParams.get("pageSize")) || DEFAULT_PAGE_SIZE)
   );
 
-  const [data, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.expense.findMany({
       where,
-      // The dashboard only ever reads these fields (see lib/types.ts) — no
-      // need to pull lineUserId/referenceNumber/slipImageUrl over the wire.
+      // referenceNumber/slipImageUrl aren't shown in the dashboard —
+      // lineUserId is only pulled to resolve a display name below, and
+      // stripped back out of the response afterward.
       select: {
         id: true,
         amount: true,
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
         description: true,
         date: true,
         createdAt: true,
+        lineUserId: true,
       },
       orderBy: { date: "desc" },
       skip: (page - 1) * pageSize,
@@ -35,6 +37,27 @@ export async function GET(request: NextRequest) {
     }),
     prisma.expense.count({ where }),
   ]);
+
+  const lineUserIds = Array.from(
+    new Set(rows.map((r) => r.lineUserId).filter((id): id is string => id !== null))
+  );
+  const lineUsers = lineUserIds.length
+    ? await prisma.lineUser.findMany({
+        where: { id: { in: lineUserIds } },
+        select: { id: true, displayName: true, nickname: true },
+      })
+    : [];
+  const lineUserMap = new Map(lineUsers.map((u) => [u.id, u]));
+
+  const data = rows.map(({ lineUserId, ...rest }) => ({
+    ...rest,
+    user: lineUserId
+      ? {
+          displayName: lineUserMap.get(lineUserId)?.displayName ?? null,
+          nickname: lineUserMap.get(lineUserId)?.nickname ?? null,
+        }
+      : null,
+  }));
 
   return NextResponse.json({ data, total, page, pageSize });
 }
@@ -73,5 +96,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json(expense, { status: 201 });
+  // Created via the web form, never via the LINE bot, so there's no
+  // associated LINE user to resolve a display name for.
+  return NextResponse.json({ ...expense, user: null }, { status: 201 });
 }

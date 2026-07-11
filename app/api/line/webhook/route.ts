@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { put } from "@vercel/blob";
 import { lineClient, lineBlobClient } from "@/lib/lineClient";
 import { runFinanceAgent } from "@/lib/financeAgent";
+import { ensureLineUser } from "@/lib/lineUsers";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -108,10 +109,13 @@ async function handleEvent(event: webhook.Event): Promise<void> {
 
   let replyText: string;
   try {
-    const { content: userContent, slipImageUrlPromise } = await buildUserContent(
-      event.message,
-      lineUserId
-    );
+    // Independent of building the message content — run concurrently
+    // instead of adding its (usually skipped, but occasionally a real LINE
+    // API call) latency in front of the agent call.
+    const [{ content: userContent, slipImageUrlPromise }] = await Promise.all([
+      buildUserContent(event.message, lineUserId),
+      ensureLineUser(lineUserId),
+    ]);
     replyText = await runFinanceAgent(userContent, lineUserId, slipImageUrlPromise);
   } catch (err) {
     console.error("[line/webhook] finance agent error:", err);

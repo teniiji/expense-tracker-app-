@@ -5,6 +5,7 @@ export interface Expense {
   description: string | null;
   date: string;
   createdAt: string;
+  user: { displayName: string | null; nickname: string | null } | null;
 }
 
 export interface ExpenseSummary {

@@ -54,3 +54,18 @@ model PendingTransaction {
   referenceNumber String?
   createdAt       DateTime @default(now())
 }
+
+// One row per LINE user who has ever messaged the bot, keyed by their LINE
+// userId. displayName is fetched from LINE's profile API the first time we
+// see a user (best-effort, may be null if that call fails); nickname is set
+// by the user themselves via the finance agent's set_nickname tool. Lets the
+// web dashboard show a name instead of a raw LINE userId. Deliberately not a
+// Prisma relation to Expense.lineUserId — that field predates this table and
+// can reference ids with no row here yet (or ever, for pre-existing data).
+model LineUser {
+  id          String   @id
+  displayName String?
+  nickname    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

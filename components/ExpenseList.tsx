@@ -21,6 +21,9 @@ const formatDate = (iso: string) =>
     day: "numeric",
   });
 
+const formatUser = (user: Expense["user"]) =>
+  user ? user.nickname ?? user.displayName ?? "LINE user" : "Web";
+
 export default function ExpenseList({
   expenses,
   total,
@@ -64,6 +67,7 @@ export default function ExpenseList({
               <th className="px-4 py-2">Date</th>
               <th className="px-4 py-2">Category</th>
               <th className="px-4 py-2">Description</th>
+              <th className="px-4 py-2">User</th>
               <th className="px-4 py-2 text-right">Amount</th>
               <th className="px-4 py-2"></th>
             </tr>
@@ -77,6 +81,9 @@ export default function ExpenseList({
                 <td className="px-4 py-2">{expense.category}</td>
                 <td className="px-4 py-2 text-slate-500">
                   {expense.description || "—"}
+                </td>
+                <td className="px-4 py-2 text-slate-500 whitespace-nowrap">
+                  {formatUser(expense.user)}
                 </td>
                 <td className="px-4 py-2 text-right font-medium">
                   {formatAmount(expense.amount)}
