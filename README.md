@@ -58,3 +58,7 @@ This only works while your computer is on and the dev server is running, and onl
 - `npm run build` — production build (also type-checks)
 - `npm run start` — run the production build
 - `npx prisma studio` — browse/edit the database in a GUI
+
+## Corporate Online pre-upload check
+
+`/transfer-check` verifies account numbers and amounts in a bulk-transfer file before it is uploaded to the bank's Corporate Online system — against the cooperative's source list and the approved control count/total. Runs entirely in the browser. Design: [`docs/corporate-online-precheck-design.md`](docs/corporate-online-precheck-design.md).
